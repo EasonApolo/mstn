@@ -13,8 +13,8 @@ dataset_names = ['amazon', 'webcam', 'dslr']
 s_name = dataset_names[s_ind]
 t_name = dataset_names[t_ind]
 n_class = 31
-s_list_path = '../data/' + s_name + '_list.txt'
-t_list_path = '../data/' + t_name + '_list.txt'
+s_list_path = './data_list/' + s_name + '_list.txt'
+t_list_path = './data_list/' + t_name + '_list.txt'
 
 cuda = torch.cuda.is_available()
 
