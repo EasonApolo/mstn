@@ -53,9 +53,11 @@ class Office(data.Dataset):
 
         # substract mean
         img -= self.mean_color
+
+        img = np.transpose(img, (2, 1, 0))
         
         # one hot label
-        one_hot_label = np.zeros(self.n_class)
+        one_hot_label = np.zeros(self.n_class, dtype=np.long)
         one_hot_label[label] = 1
 
         return img, one_hot_label
