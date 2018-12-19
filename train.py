@@ -1,17 +1,21 @@
 import torch
+import torch.nn as nn
+import numpy as np
 import os
+import math
+import itertools
 import MyDataset
 import MyModel
-import itertools
-import numpy as np
-import torch.nn as nn
 import utils
-import math
 
-def adjust_learning_rate(opt, iter):
+def change_opt_lr(opt, iter, opt_D=False):
     lr = init_lr / pow(1 + 0.001 * iter, 0.75)
-    for param_group in opt.param_groups:
-        param_group['lr'] = lr
+    if opt_D:
+        lr_index = lr_mult_D
+    else:
+        lr_index = lr_mult
+    for ind, param_group in enumerate(opt.param_groups):
+        param_group['lr'] = lr * lr_index[ind]
     return lr
 
 def adaptation_factor(x):
@@ -28,7 +32,7 @@ init_lr = 0.01
 batch_size = 100
 max_epoch = 10000
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 cuda = torch.cuda.is_available()
 
 # set params
@@ -36,10 +40,14 @@ dataset_names = ['amazon', 'webcam', 'dslr']
 s_name = dataset_names[s_ind]
 t_name = dataset_names[t_ind]
 n_class = 31
+lr_mult = [0.1, 0.2, 1, 2]
+lr_mult_D = [1, 2]
 s_list_path = './data_list/' + s_name + '_list.txt'
 t_list_path = './data_list/' + t_name + '_list.txt'
 log = open('log/' + s_name + '_' + t_name + '_' + str(batch_size) + '.log', 'w')
+checkpoint_path = 'checkpoint/' + s_name + '_' + t_name + '_' +str(batch_size) + '.pth'
 print 'source: {}, target: {}, batch_size: {}'.format(s_name, t_name, batch_size)
+
 
 # define DataLoader
 s_loader = torch.utils.data.DataLoader(MyDataset.Office(s_list_path),
@@ -49,12 +57,11 @@ t_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path),
 val_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path, training=False),
                                          batch_size=batch_size)
 
-
 # define model
 model = MyModel.AlexNet(cudable=cuda)
 
-print 'start loading model...'
 # load pre-trained model
+print 'start loading model...'
 loaded_dict = utils.load_pretrain_npy()
 model.load_state_dict(loaded_dict, strict=False)
 print 'model loading OK'
@@ -63,28 +70,19 @@ if cuda:
 print 'model.cuda OK'
 
 # define optimizer
-conv_params = list(map(id, model.conv.parameters()))
-dense_params = list(map(id, model.dense.parameters()))
+opt, opt_D = model.get_optimizer(init_lr, lr_mult, lr_mult_D)
 
-opt = torch.optim.SGD([{'params': model.conv.parameters(), 'lr': init_lr*0.1},
-                       {'params': model.dense.parameters(), 'lr': init_lr * 0.1},
-                       {'params': model.fc8.parameters(), 'lr': init_lr * 1},
-                       {'params': model.fc9.parameters(), 'lr': init_lr * 2}
-                       ], lr=init_lr, momentum=0.9)
-
-opt_D = torch.optim.SGD(params=model.D.parameters(), lr=init_lr, momentum=0.9)
-opt_D = torch.optim.SGD(params=model.D.parameters(), lr=init_lr, momentum=0.9)
-
-print 'training start'
 # training
+print 'training start'
 iter = 0
 for epoch in range(0, max_epoch):
+    lamb = adaptation_factor(epoch * 1.0 / max_epoch)
     for index, ([xs, ys], [xt, yt]) in enumerate(itertools.izip(s_loader, t_loader)):
-        # set mode and params for this iter
         iter += 1
+        current_lr = change_opt_lr(opt, iter)
+        current_lr = change_opt_lr(opt_D, iter, opt_D=True)
+        # set mode and params for this iter
         model.train()
-        lamb = adaptation_factor(iter*1.0/max_epoch)
-        current_lr = adjust_learning_rate(opt, iter)
 
         opt.zero_grad()
         opt_D.zero_grad()
@@ -110,14 +108,22 @@ for epoch in range(0, max_epoch):
         G_loss, D_loss, semantic_loss = model.adloss(s_logit, t_logit, s_feature, t_feature, ys, t_pred)
         Dregloss, Gregloss = model.regloss()
         Floss = C_loss + Gregloss + lamb * G_loss + lamb * semantic_loss
+        Dloss = D_loss + Dregloss
 
         # backward
         Floss.backward(retain_graph=True)
-        Dregloss.backward()
+        Dloss.backward(retain_graph=True)
 
         # optimize
         opt.step()
         opt_D.step()
+
+        # print and log
+        if iter % 10 == 0:
+            log.write('iter: {}, lr: {}, lambda: {}\n'.format(iter, current_lr, lamb))
+            log.write('\tcorrect: {}, C_loss: {}, G_loss:{}, D_loss:{}, semantic_loss: {}, Dregloss: {}, Gregloss: {}, F_loss: {}\n'.format(s_correct.item(), C_loss.item(), G_loss.item(), D_loss.item(), semantic_loss.item(), Dregloss.item(), Gregloss.item(),  Floss.item()))
+            print 'iter: {}, lr: {}, lambda: {}'.format(iter, current_lr, lamb)
+            print 'correct: {}, C_loss: {}, G_loss:{}, D_loss:{}, semantic_loss: {}, Dregloss: {}, Gregloss: {}, F_loss: {}'.format(s_correct.item(), C_loss.item(), G_loss.item(), D_loss.item(), semantic_loss.item(), Dregloss.item(), Gregloss.item(),  Floss.item())
 
         # validation
         if iter % 50 == 0:
@@ -137,13 +143,6 @@ for epoch in range(0, max_epoch):
             log.write('validation: {}, {}\n'.format(v_correct.item(), v_acc.item()))
             print 'validation: {}, {}'.format(v_correct.item(), v_acc.item())
 
-        # print and log
-        if iter % 1 == 0:
-            log.write('iter: {}, lr: {}, lambda: {}\n'.format(iter, current_lr, lamb))
-            log.write('\tcorrect: {}, C_loss: {}, G_loss:{}, D_loss:{}, semantic_loss: {}, Dregloss: {}, Gregloss: {}, F_loss: {}\n'.format(s_correct.item(), C_loss.item(), G_loss.item(), D_loss.item(), semantic_loss.item(), Dregloss.item(), Gregloss.item(),  Floss.item()))
-            print 'iter: {}, lr: {}, lambda: {}'.format(iter, current_lr, lamb)
-            print 'correct: {}, C_loss: {}, G_loss:{}, D_loss:{}, semantic_loss: {}, Dregloss: {}, Gregloss: {}, F_loss: {}'.format(s_correct.item(), C_loss.item(), G_loss.item(), D_loss.item(), semantic_loss.item(), Dregloss.item(), Gregloss.item(),  Floss.item())
-
         # save model
         if iter % 2000 == 0:
             torch.save({
@@ -152,4 +151,4 @@ for epoch in range(0, max_epoch):
                 'model_state_dict': model.state_dict(),
                 'opt_state_dict': opt.state_dict(),
                 'opt_D_state_dict': opt_D.state_dict()
-            }, PATH)
+            }, checkpoint_path)

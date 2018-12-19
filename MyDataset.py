@@ -1,4 +1,3 @@
-import torch
 from torch.utils import data
 import cv2
 import numpy as np
@@ -28,7 +27,7 @@ class Office(data.Dataset):
         image_path = self.images[index]
         label = self.labels[index]
         img = cv2.imread(image_path)
-        if img == None:
+        if type(img) == None:
             print 'Error: Image at {} not found.'.format(image_path)
 
         # set param

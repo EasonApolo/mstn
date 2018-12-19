@@ -2,10 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="4ecd9810-bb6c-49e4-b1a7-d07f45d1482d" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/MyDataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/MyDataset.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/MyModel.py" beforeDir="false" afterPath="$PROJECT_DIR$/MyModel.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data_list/amazon_list.txt" beforeDir="false" afterPath="$PROJECT_DIR$/data_list/amazon_list.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data_list/dslr_list.txt" beforeDir="false" afterPath="$PROJECT_DIR$/data_list/dslr_list.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/data_list/webcam_list.txt" beforeDir="false" afterPath="$PROJECT_DIR$/data_list/webcam_list.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/train.py" beforeDir="false" afterPath="$PROJECT_DIR$/train.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -19,8 +19,8 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/train.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="220">
-              <caret line="41" lean-forward="true" selection-start-line="41" selection-end-line="41" />
+            <state relative-caret-position="420">
+              <caret line="34" column="39" selection-start-line="34" selection-start-column="39" selection-end-line="34" selection-end-column="39" />
               <folding>
                 <element signature="e#0#12#0" expanded="true" />
               </folding>
@@ -31,29 +31,8 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/MyModel.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="341">
-              <caret line="106" column="26" selection-start-line="106" selection-start-column="26" selection-end-line="106" selection-end-column="26" />
-              <folding>
-                <element signature="e#15#27#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$USER_HOME$/anaconda2/lib/python2.7/site-packages/torch/nn/modules/module.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="193">
-              <caret line="241" selection-start-line="241" selection-end-line="241" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/utils.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="76">
-              <caret line="20" lean-forward="true" selection-start-line="20" selection-end-line="20" />
+            <state relative-caret-position="360">
+              <caret line="24" column="17" selection-start-line="24" selection-start-column="17" selection-end-line="24" selection-end-column="17" />
               <folding>
                 <element signature="e#0#12#0" expanded="true" />
               </folding>
@@ -64,8 +43,20 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/MyDataset.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="120">
-              <caret line="8" column="24" lean-forward="true" selection-start-line="8" selection-start-column="24" selection-end-line="8" selection-end-column="24" />
+            <state relative-caret-position="495">
+              <caret line="33" column="36" lean-forward="true" selection-start-line="33" selection-start-column="36" selection-end-line="33" selection-end-column="36" />
+              <folding>
+                <element signature="e#0#28#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/utils.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="331">
+              <caret line="61" column="55" lean-forward="true" selection-start-line="61" selection-start-column="55" selection-end-line="61" selection-end-column="55" />
               <folding>
                 <element signature="e#0#12#0" expanded="true" />
               </folding>
@@ -89,10 +80,25 @@
       <find>decay</find>
       <find>greg</find>
       <find>n_class</find>
+      <find>mse</find>
+      <find>torch.nn</find>
+      <find>F</find>
+      <find>fc</find>
+      <find>D_loss</find>
+      <find>lrn</find>
+      <find>np.</find>
+      <find>coll</find>
+      <find>data</find>
+      <find>chain</find>
+      <find>get</find>
+      <find>current_lr</find>
+      <find>model</find>
+      <find>conv_</find>
     </findStrings>
     <replaceStrings>
       <replace>../</replace>
       <replace>../../</replace>
+      <replace>self</replace>
     </replaceStrings>
   </component>
   <component name="Git.Settings">
@@ -108,6 +114,8 @@
         <option value="$PROJECT_DIR$/data_list/amazon_list.txt" />
         <option value="$PROJECT_DIR$/data_list/dslr_list.txt" />
         <option value="$PROJECT_DIR$/data_list/webcam_list.txt" />
+        <option value="$PROJECT_DIR$/.gitignore" />
+        <option value="$PROJECT_DIR$/MyDataset.py" />
         <option value="$PROJECT_DIR$/MyModel.py" />
         <option value="$PROJECT_DIR$/train.py" />
       </list>
@@ -131,6 +139,16 @@
             <path>
               <item name="mymstn" type="b2602c69:ProjectViewProjectNode" />
               <item name="mymstn" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="mymstn" type="b2602c69:ProjectViewProjectNode" />
+              <item name="mymstn" type="462c0819:PsiDirectoryNode" />
+              <item name="checkpoint" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="mymstn" type="b2602c69:ProjectViewProjectNode" />
+              <item name="mymstn" type="462c0819:PsiDirectoryNode" />
+              <item name="log" type="462c0819:PsiDirectoryNode" />
             </path>
           </expand>
           <select />
@@ -205,8 +223,8 @@
       <window_info id="Favorites" order="2" side_tool="true" />
       <window_info anchor="bottom" id="Message" order="0" />
       <window_info anchor="bottom" id="Find" order="1" />
-      <window_info anchor="bottom" id="Run" order="2" weight="0.3164693" />
-      <window_info active="true" anchor="bottom" id="Debug" order="3" visible="true" weight="0.39074275" />
+      <window_info active="true" anchor="bottom" id="Run" order="2" visible="true" weight="0.3110872" />
+      <window_info anchor="bottom" id="Debug" order="3" weight="0.39074275" />
       <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
       <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
       <window_info anchor="bottom" id="TODO" order="6" />
@@ -218,6 +236,17 @@
       <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
       <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
     </layout>
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/train.py</url>
+          <line>84</line>
+          <option name="timeStamp" value="29" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
   <component name="editorHistoryManager">
     <entry file="file://$PROJECT_DIR$/data_list/dslr_list.txt">
@@ -255,20 +284,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$USER_HOME$/anaconda2/lib/python2.7/site-packages/torch/tensor.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="162">
-          <caret line="292" selection-start-line="292" selection-end-line="292" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$USER_HOME$/anaconda2/lib/python2.7/site-packages/torch/autograd/__init__.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="176">
-          <caret line="89" selection-start-line="89" selection-end-line="89" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$APPLICATION_HOME_DIR$/helpers/pydev/pydevd.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="163">
@@ -276,37 +291,77 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/MyDataset.py">
+    <entry file="file://$USER_HOME$/anaconda2/lib/python2.7/site-packages/torch/tensor.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="120">
-          <caret line="8" column="24" lean-forward="true" selection-start-line="8" selection-start-column="24" selection-end-line="8" selection-end-column="24" />
+        <state relative-caret-position="201">
+          <caret line="92" selection-start-line="92" selection-end-line="92" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/anaconda2/lib/python2.7/site-packages/torch/autograd/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="441">
+          <caret line="105" column="12" selection-start-line="105" selection-start-column="12" selection-end-line="105" selection-end-column="12" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/log/webcam_dslr_1.log">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-499" />
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/.gitignore">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="60">
+          <caret line="4" column="5" selection-start-line="4" selection-start-column="5" selection-end-line="4" selection-end-column="5" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/anaconda2/lib/python2.7/site-packages/torch/nn/functional.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="178">
+          <caret line="1023" selection-start-line="1023" selection-end-line="1023" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/anaconda2/lib/python2.7/site-packages/torch/nn/modules/module.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="238">
+          <caret line="508" selection-start-line="508" selection-end-line="508" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/anaconda2/lib/python2.7/site-packages/torch/nn/modules/container.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="178">
+          <caret line="63" selection-start-line="63" selection-end-line="63" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/utils.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="331">
+          <caret line="61" column="55" lean-forward="true" selection-start-line="61" selection-start-column="55" selection-end-line="61" selection-end-column="55" />
           <folding>
             <element signature="e#0#12#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-    <entry file="file://$USER_HOME$/anaconda2/lib/python2.7/site-packages/torch/nn/modules/module.py">
+    <entry file="file://$PROJECT_DIR$/MyDataset.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="193">
-          <caret line="241" selection-start-line="241" selection-end-line="241" />
+        <state relative-caret-position="495">
+          <caret line="33" column="36" lean-forward="true" selection-start-line="33" selection-start-column="36" selection-end-line="33" selection-end-column="36" />
+          <folding>
+            <element signature="e#0#28#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/MyModel.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="341">
-          <caret line="106" column="26" selection-start-line="106" selection-start-column="26" selection-end-line="106" selection-end-column="26" />
-          <folding>
-            <element signature="e#15#27#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/utils.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="76">
-          <caret line="20" lean-forward="true" selection-start-line="20" selection-end-line="20" />
+        <state relative-caret-position="360">
+          <caret line="24" column="17" selection-start-line="24" selection-start-column="17" selection-end-line="24" selection-end-column="17" />
           <folding>
             <element signature="e#0#12#0" expanded="true" />
           </folding>
@@ -315,8 +370,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/train.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="220">
-          <caret line="41" lean-forward="true" selection-start-line="41" selection-end-line="41" />
+        <state relative-caret-position="420">
+          <caret line="34" column="39" selection-start-line="34" selection-start-column="39" selection-end-line="34" selection-end-column="39" />
           <folding>
             <element signature="e#0#12#0" expanded="true" />
           </folding>
