@@ -65,7 +65,7 @@ class AlexNet(nn.Module):
             nn.Linear(1024, 1),
             nn.Sigmoid()
         )
-        self.mse = torch.nn.MSELoss()
+        self.mse = nn.MSELoss()
         self.fc8.apply(self.init_weights)
         self.fc9.apply(self.init_weights)
         self.D[0].apply(self.init_weights)
@@ -74,7 +74,7 @@ class AlexNet(nn.Module):
 
     def init_weights(self, m):
         if type(m) == nn.Linear:
-            torch.nn.init.xavier_normal_(m.weight)
+            nn.init.xavier_normal_(m.weight)
             m.bias.data.fill_(0.1)
         
     def forward(self, x, training=True):
