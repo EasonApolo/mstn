@@ -1,6 +1,8 @@
 from torch.utils import data
 import cv2
 import numpy as np
+import torchvision.transforms as tv
+
 
 class Office(data.Dataset):
 
@@ -38,7 +40,6 @@ class Office(data.Dataset):
             new_size = self.multi_scale[1]
 
         # resize
-        img = img.astype(np.float32)
         img = cv2.resize(img, (new_size, new_size))
 
         # cropping
@@ -49,14 +50,18 @@ class Office(data.Dataset):
         else:
             offset_x = (img.shape[0] - self.output_size[0]) // 2
             offset_y = (img.shape[1] - self.output_size[1]) // 2
+
         img = img[offset_x:(offset_x+self.output_size[0]),
                   offset_y:(offset_y+self.output_size[1])]
 
         # substract mean
-        img -= self.mean_color
+        img = img.astype(np.float32)
+        img -= np.array(self.mean_color)
 
-        img = np.transpose(img, (2, 1, 0))
-        
+        # ToTensor transform cv2HWC->CHW, and div by 255. img = np.transpose(img, (2, 0, 1))
+        tensor = tv.ToTensor()
+        img = tensor(img)
+
         # one hot label
         one_hot_label = np.zeros(self.n_class, dtype=np.long)
         one_hot_label[label] = 1

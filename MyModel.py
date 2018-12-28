@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import itertools
 from itertools import chain
+from torchvision.models import alexnet
+import utils
 
 class AlexNet(nn.Module):
 
@@ -19,12 +21,12 @@ class AlexNet(nn.Module):
             nn.Conv2d(3, 96, 11, stride=4),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2),
-            nn.LocalResponseNorm(1, 1e-5, 0.75),
+            nn.LocalResponseNorm(3, 1e-5, 0.75),
 
             nn.Conv2d(96, 256, 5, stride=1, padding=2, groups=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2),
-            nn.LocalResponseNorm(1, 1e-5, 0.75),
+            nn.LocalResponseNorm(3, 1e-5, 0.75),
 
             nn.Conv2d(256, 384, 3, stride=1, padding=1),
             nn.ReLU(inplace=True),
@@ -42,7 +44,7 @@ class AlexNet(nn.Module):
             nn.Dropout(),
 
             nn.Linear(4096, 4096),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Dropout(),
         )
         self.fc8 = nn.Sequential(
@@ -72,7 +74,9 @@ class AlexNet(nn.Module):
 
     def init_linear(self, m, std=0.01, D=False):
         if type(m) == nn.Linear:
-            nn.init.xavier_normal_(m.weight)
+            utils.truncated_normal_(m.weight.data, 0, std)
+            # m.weight.data.normal_(0, std)
+            # nn.init.normal_(m.weight, std=std)
             if D:
                 m.bias.data.fill_(0)
             else:
@@ -134,8 +138,8 @@ class AlexNet(nn.Module):
         MSEloss = nn.MSELoss()
         semantic_loss = MSEloss(s_centroid, t_centroid)
 
-        s_centroid = s_centroid.data
-        t_centroid = t_centroid.data
+        self.s_centroid = s_centroid.data
+        self.t_centroid = t_centroid.data
 
         # sigmoid binary cross entropy with reduce mean
         BCEloss = nn.BCEWithLogitsLoss(reduction='mean')
@@ -172,13 +176,54 @@ class AlexNet(nn.Module):
                 w_D.append(layer.weight)
                 b_D.append(layer.bias)
 
-        opt = torch.optim.SGD([{'params': w_finetune, 'lr': init_lr * 0.1},
-                               {'params': b_finetune, 'lr': init_lr * 0.2},
-                               {'params': w_train, 'lr': init_lr * 1},
-                               {'params': b_train, 'lr': init_lr * 2}
-                               ], lr=init_lr, momentum=0.9)
+        opt = torch.optim.SGD([{'params': w_finetune, 'lr': init_lr * lr_mult[0]},
+                               {'params': b_finetune, 'lr': init_lr * lr_mult[1]},
+                               {'params': w_train, 'lr': init_lr * lr_mult[2]},
+                               {'params': b_train, 'lr': init_lr * lr_mult[3]}
+                               ], lr=init_lr, momentum=0.9, weight_decay=0.0005)
 
-        opt_D = torch.optim.SGD([{'params': w_D, 'lr': init_lr * 1},
-                                 {'params': b_D, 'lr': init_lr * 2}], lr=init_lr, momentum=0.9)
+        opt_D = torch.optim.SGD([{'params': w_D, 'lr': init_lr * lr_mult_D[0]},
+                                 {'params': b_D, 'lr': init_lr * lr_mult_D[1]}], lr=init_lr, momentum=0.9)
 
         return opt, opt_D
+
+
+class PreAlexNet(nn.Module):
+
+    def __init__(self, cudable):
+        super(PreAlexNet, self).__init__()
+
+        self.alexnet = alexnet(pretrained=True)
+        self.bottleneck_layer = nn.Sequential(
+            nn.Linear(1000, 256),
+            nn.ReLU(),
+            nn.Dropout(0.5)
+        )
+        self.classifier_layer = nn.Linear(256, 31)
+        self.softmax_layer = nn.Softmax(dim=0)
+
+        self.init()
+
+    def init(self):
+        for param in self.alexnet.parameters():
+            param.requires_grad = False
+        self.bottleneck_layer[0].weight.data.normal_(0, 0.005)
+        self.bottleneck_layer[0].bias.data.fill_(0.1)
+        self.classifier_layer.weight.data.normal_(0, 0.01)
+        self.classifier_layer.bias.data.fill_(0.0)
+
+    def get_optimizer(self, init_lr, lr_mult):
+        parameter_list = [
+            {"params": self.alexnet.parameters()},
+            {"params": self.bottleneck_layer.parameters()},
+            {"params": self.classifier_layer.parameters()}
+        ]
+        return torch.optim.SGD(parameter_list, lr=init_lr, momentum=0.9, weight_decay=0.0005)
+
+    def forward(self, x):
+        alex_out = self.alexnet.forward(x)
+        feature = self.bottleneck_layer(alex_out)
+        score = self.classifier_layer(feature)
+        pred = self.softmax_layer(score)
+        return feature, score, pred
+
