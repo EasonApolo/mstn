@@ -1,6 +1,6 @@
-from torch.utils import data
 import cv2
 import numpy as np
+from torch.utils import data
 import torchvision.transforms as tv
 
 
@@ -13,7 +13,7 @@ class Office(data.Dataset):
         self.output_size = [227, 227]
         self.training = training
         self.n_class = 31
-        self.mean_color=[104.0069879317889,116.66876761696767,122.6789143406786]
+        self.mean_color=[104.006,116.668,122.678]
 
         list_file = open(list)
         lines = list_file.readlines()
@@ -32,15 +32,12 @@ class Office(data.Dataset):
         if type(img) == None:
             print 'Error: Image at {} not found.'.format(image_path)
 
-        # set param
-        if np.random.random() < 0.5:
+        if self.training and np.random.random() < 0.5:
             img = cv2.flip(img, 1)
-            new_size = self.multi_scale[0]
-        else:
-            new_size = self.multi_scale[1]
+        new_size = np.random.randint(self.multi_scale[0], self.multi_scale[1], 1)[0]
 
-        # resize
         img = cv2.resize(img, (new_size, new_size))
+        img = img.astype(np.float32)
 
         # cropping
         if self.training:
@@ -48,22 +45,23 @@ class Office(data.Dataset):
             offset_x = np.random.randint(0, diff, 1)[0]
             offset_y = np.random.randint(0, diff, 1)[0]
         else:
-            offset_x = (img.shape[0] - self.output_size[0]) // 2
-            offset_y = (img.shape[1] - self.output_size[1]) // 2
+            offset_x = img.shape[0]//2 - self.output_size[0] // 2
+            offset_y = img.shape[1]//2 - self.output_size[1] // 2
 
         img = img[offset_x:(offset_x+self.output_size[0]),
                   offset_y:(offset_y+self.output_size[1])]
 
         # substract mean
-        img = img.astype(np.float32)
         img -= np.array(self.mean_color)
 
-        # ToTensor transform cv2HWC->CHW, and div by 255. img = np.transpose(img, (2, 0, 1))
+        # ToTensor transform cv2 HWC->CHW, only byteTensor will be div by 255.
         tensor = tv.ToTensor()
         img = tensor(img)
+        # img = np.transpose(img, (2, 0, 1))
 
-        # one hot label
-        one_hot_label = np.zeros(self.n_class, dtype=np.long)
-        one_hot_label[label] = 1
+        # # one hot label
+        # one_hot_label = np.zeros(self.n_class, dtype=np.float32)
+        # one_hot_label[label] = 1
+        one_hot_label = label
 
         return img, one_hot_label

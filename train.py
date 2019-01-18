@@ -1,25 +1,22 @@
-import torch
-import torch.nn as nn
-import numpy as np
 import os
 import math
+import argparse
+import numpy as np
+import torch
+import torch.nn as nn
+from torchvision import datasets
+from torchvision import transforms
+from visdom import Visdom
 import MyDataset
 import MyModel
 import utils
-import argparse
 
-def lr_schedule(opt, epoch, net='C'):
-    lr = init_lr / pow(1 + 0.01 * epoch, 0.75)
-    if net == 'D':
-        lr_index = lr_mult_D
-    elif net == 'C':
-        lr_index = lr_mult
-    elif net == 'A':
-        lr_index = lr_mult_Alex
+
+def lr_schedule(opt, epoch, mult):
+    lr = init_lr / pow(1 + 0.001 * epoch, 0.75)
     for ind, param_group in enumerate(opt.param_groups):
-        param_group['lr'] = lr * lr_index[ind]
+        param_group['lr'] = lr * mult[ind]
     return lr
-
 
 def adaptation_factor(x):
 	if x>= 1.0:
@@ -28,164 +25,183 @@ def adaptation_factor(x):
 	lamb = 2.0 / den - 1.0
 	return lamb
 
+def output(mes):
+    print mes
+    log.write(mes)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--gpu', default='1', type=str)
-parser.add_argument('--resume', default=False, type=bool)
+parser.add_argument('--s', default=0, type=int)
+parser.add_argument('--t', default=1, type=int)
+parser.add_argument('--gpu', default=1, type=int)
+parser.add_argument('--resume', default='', type=str)                # resume from pretrained bvlc_alexnet model
+parser.add_argument('--da', default=1, type=int)                    # 1 for doing domain adaptation
+parser.add_argument('--name', default='', type=str)                    # 1 for doing domain adaptation
 args = parser.parse_args()
-
-s_ind = 0
-t_ind = 1
-init_lr = 1e-2
-batch_size = 128
-max_epoch = 10000
-lr_mult = [0.1, 0.2, 1, 2]
-lr_mult_D = [1, 2]
-lr_mult_Alex = [0.3, 0.3]
-
-# set
-dataset_names = ['amazon', 'webcam', 'dslr']
-s_name = dataset_names[s_ind]
-t_name = dataset_names[t_ind]
-n_class = 31
-s_list_path = './data_list/' + s_name + '_list.txt'
-t_list_path = './data_list/' + t_name + '_list.txt'
 resume = args.resume
-
-log = open('log/' + s_name + '_' + t_name + '_' + str(batch_size) + '.log', 'w')
-checkpoint_path = 'checkpoint/' + s_name + '_' + t_name + '_' +str(batch_size) + '.pth'
-
-gpu = args.gpu
-os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu)
+da = args.da
+os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
 cuda = torch.cuda.is_available()
 
-print 'GPU: {}'.format(gpu)
+init_lr = 1e-2
+batch_size = 100
+max_epoch = 30000
+lr_mult = [0.1, 0.2, 1, 2]
+lr_mult_D = [1, 2]
+dataset_names = ['amazon', 'webcam', 'dslr']
+s_name = dataset_names[args.s]
+t_name = dataset_names[args.t]
+s_list_path = './data_list/' + s_name + '_list.txt'
+t_list_path = './data_list/' + t_name + '_list.txt'
+s_folder_path = '../../dataset/office/' + s_name + '/images'
+t_folder_path = '../../dataset/office/' + t_name + '/images'
+n_class = 31
+log_name = '_'.join(str(a) for a in [s_name, t_name, str(batch_size), str(da), str(init_lr)])
+log = open('log/' + log_name + '.log', 'w')
+pretrain_path = 'checkpoint/' + resume + '.pth'
+checkpoint_save_path = 'checkpoint/' + log_name + '.pth'
+print 'GPU: {}'.format(args.gpu)
 print 'source: {}, target: {}, batch_size: {}, init_lr: {}'.format(s_name, t_name, batch_size, init_lr)
-print 'lr_mult: {}, lr_mult_D: {}'.format(lr_mult, lr_mult_D)
+print 'lr_mult: {}, lr_mult_D: {}, resume: {}, da: {}'.format(lr_mult, lr_mult_D, resume, da)
 
+vis = Visdom(env='mymstn'+str(init_lr)+args.name)
 
-# define DataLoader
-s_loader = torch.utils.data.DataLoader(MyDataset.Office(s_list_path),
-                                       batch_size=batch_size, shuffle=True, drop_last=True)
-t_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path),
-                                       batch_size=batch_size, shuffle=True, drop_last=True)
-val_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path, training=False),
-                                         batch_size=1)
-s_loader_len = len(s_loader)
-t_loader_len = len(t_loader)
+data_transforms = {
+    'train': transforms.Compose([
+        transforms.RandomResizedCrop(227),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize([122.678, 116.668, 104.006], [1, 1, 1])
+    ]),
+    'val': transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(227),
+        transforms.ToTensor(),
+        transforms.Normalize([122.678, 116.668, 104.006], [1, 1, 1])
+    ]),
+}
+# s_loader = torch.utils.data.DataLoader(MyDataset.Office(s_list_path),
+#                                        batch_size=batch_size, shuffle=True, drop_last=True)
+# t_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path),
+#                                        batch_size=batch_size, shuffle=True, drop_last=True)
+# val_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path, training=False),
+#                                          batch_size=1)
+s_loader = torch.utils.data.DataLoader(datasets.ImageFolder(s_folder_path, transform=data_transforms['train']),
+                                       batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
+t_loader = torch.utils.data.DataLoader(datasets.ImageFolder(t_folder_path, transform=data_transforms['train']),
+                                       batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
+val_loader = torch.utils.data.DataLoader(datasets.ImageFolder(t_folder_path, transform=data_transforms['val']),
+                                         batch_size=batch_size, num_workers=8)
+s_loader_len, t_loader_len = len(s_loader), len(t_loader)
 
-# define model
 model = MyModel.AlexNet(cudable=cuda)
+if cuda:
+    model.cuda()
 
-# define optimizer
 opt, opt_D = model.get_optimizer(init_lr, lr_mult, lr_mult_D)
 
 # resume or init
-if resume:
-    pretrain = torch.load(checkpoint_path, map_location='cpu')
+if not resume == '':
+    pretrain = torch.load(pretrain_path)
     model.load_state_dict(pretrain['model'])
-    opt.load_state_dict(pretrain['optimizer'])
-    epoch = pretrain['epoch']
+    opt.load_state_dict(pretrain['opt'])
+    opt_D.load_state_dict(pretrain['opt_D'])
+    epoch = pretrain['epoch'] # need change to 0 when DA
 else:
-    loaded_dict = utils.load_pretrain_npy()
-    model.load_state_dict(loaded_dict, strict=False)
+    model.load_state_dict(utils.load_pretrain_npy(), strict=False)
     epoch = 0
 
-if cuda:
-    model.cuda()
-    print 'model cuda OK'
 
-
-print '    =======    START TRAINING    =======    '
-for epoch in range(epoch, max_epoch):
-
+output('    =======    START TRAINING    =======    ')
+for epoch in range(epoch, 100000):
     model.train()
-
-    if epoch % s_loader_len == 0:
-        s_loader_epoch = iter(s_loader)
+    lamb = adaptation_factor(epoch * 1.0 / max_epoch)
+    current_lr, _ = lr_schedule(opt, epoch, lr_mult), lr_schedule(opt_D, epoch, lr_mult_D)
+    # if epoch % s_loader_len == 0:
     if epoch % t_loader_len == 0:
+        s_loader_epoch = iter(s_loader)
         t_loader_epoch = iter(t_loader)
     xs, ys = s_loader_epoch.next()
     xt, yt = t_loader_epoch.next()
-
-    lamb = adaptation_factor(epoch * 1.0 / max_epoch)
-    current_lr = lr_schedule(opt, epoch, 'C')
-    current_lr = lr_schedule(opt_D, epoch, 'D')
-
-    opt.zero_grad()
-    opt_D.zero_grad()
-
     if cuda:
-        xs, ys = xs.cuda(), ys.cuda()
-        xt, yt = xt.cuda(), yt.cuda()
-
-    s_label = torch.max(ys, 1)[1]
+        xs, ys, xt, yt = xs.cuda(), ys.cuda(), xt.cuda(), yt.cuda()
 
     # forward
     s_feature, s_score, s_pred = model.forward(xs)
     t_feature, t_score, t_pred = model.forward(xt)
-    s_logit = model.forward_D(s_feature)
-    t_logit = model.forward_D(t_feature)
+    C_loss = model.closs(s_score, ys)
+    if da:
+        s_logit, t_logit = model.forward_D(s_feature), model.forward_D(t_feature)
 
-    # loss
-    C_loss = model.closs(s_score, s_label)
-    G_loss, D_loss, semantic_loss = model.adloss(s_logit, t_logit, s_feature, t_feature, ys, t_pred)
-    Dregloss, Gregloss = model.regloss()
-    F_loss = C_loss + lamb * G_loss + lamb * semantic_loss
+        G_loss, D_loss, semantic_loss = model.adloss(s_logit, t_logit, s_feature, t_feature, ys, t_pred)
+        Dregloss, Gregloss = model.regloss()
+        F_loss = C_loss + Gregloss + lamb * G_loss + lamb * semantic_loss
+        D_loss = lamb * D_loss + Dregloss
 
-    F_loss.backward(retain_graph=True)
-    D_loss.backward()
+        opt_D.zero_grad()
+        D_loss.backward(retain_graph=True)
+        opt_D.step()
+        opt.zero_grad()
+        F_loss.backward(retain_graph=True)
+        opt.step()
+    else:
+        C_loss.backward()
+        opt.step()
 
-    # optimize
-    opt.step()
-    opt_D.step()
 
     if epoch % 10 == 0:
+        vis.line(X=np.array([epoch]), Y=np.array([C_loss.item()]), win='C_loss', update='append' if epoch > 0 else None)
+        vis.line(X=np.array([epoch]), Y=np.array([G_loss.item()]), win='G_loss', update='append' if epoch > 0 else None)
+        vis.line(X=np.array([epoch]), Y=np.array([semantic_loss.item()]), win='semantic_loss', update='append' if epoch > 0 else None)
+        vis.line(X=np.array([epoch]), Y=np.array([Gregloss.item()]), win='Gregloss', update='append' if epoch > 0 else None)
+        vis.line(X=np.array([epoch]), Y=np.array([Dregloss.item()]), win='Dregloss', update='append' if epoch > 0 else None)
+        vis.line(X=np.array([epoch]), Y=np.array([F_loss.item()]), win='F_loss', update='append' if epoch > 0 else None)
+
         s_pred_label = torch.max(s_score, 1)[1]
-        s_correct = torch.sum(torch.eq(s_pred_label, s_label).float())
+        s_correct = torch.sum(torch.eq(s_pred_label, ys).float())
         s_acc = torch.div(s_correct, ys.size(0))
-        # log.write('epoch: {}, lr: {}, lambda: {}\n'.format(epoch, current_lr, lamb))
-        # log.write('\tcorrect: {}, C_loss: {}, G_loss:{}, D_loss:{}, semantic_loss: {}, F_loss: {}\n'.format(s_correct.item(), C_loss.item(), G_loss.item(), D_loss.item(), semantic_loss.item(),  Floss.item()))
-        print 'epoch: {}, lr: {}, lambda: {}'.format(epoch, current_lr, lamb)
-        print 'correct: {}, C_loss: {}, G_loss:{}, D_loss:{}, semantic_loss: {}, F_loss: {}'.format(s_correct.item(), C_loss.item(), G_loss.item(), D_loss.item(), semantic_loss.item(),  F_loss.item())
+
+        output('epoch: {}, lr: {}, lambda: {}'.format(epoch, current_lr, lamb))
+        if da:
+            output('correct: {}, C_loss: {}, G_loss:{}, D_loss:{}, Gregloss: {}, Dregloss: {}, semantic_loss: {}, F_loss: {}'.format(
+                s_correct.item(), C_loss.item(), G_loss.item(), D_loss.item(),
+                Gregloss.item(), Dregloss.item(), semantic_loss.item(), F_loss.item()))
+        else:
+            output('correct: {}, C_loss: {}'.format(s_correct.item(), C_loss.item()))
+
 
     # validation
-    if epoch % 50 == 0 and epoch != 0:
-        print '    =======    START VALIDATION    =======    '
+    if epoch % 100 == 0 and epoch != 0:
+        output('    =======    START VALIDATION    =======    ')
         model.eval()
-        v_correct = 0
-        v_sum = 0
-        zeros = torch.zeros(n_class)
-        zeros_classes = torch.zeros(n_class)
+        v_correct, v_sum = 0, 0
+        zeros, zeros_classes = torch.zeros(n_class), torch.zeros(n_class)
         if cuda:
-            zeros = zeros.cuda()
-            zeros_classes = zeros_classes.cuda()
+            zeros, zeros_classes = zeros.cuda(), zeros_classes.cuda()
         for ind2, (xv, yv) in enumerate(val_loader):
             if cuda:
                 xv, yv = xv.cuda(), yv.cuda()
             v_feature, v_score, v_pred = model.forward(xv)
             v_pred_label = torch.max(v_score, 1)[1]
-            v_label = torch.max(yv, 1)[1]
-            v_equal = torch.eq(v_pred_label, v_label).float()
-            zeros = zeros.scatter_add(0, v_label, v_equal)
-            zeros_classes = zeros_classes.scatter_add(0, v_label, torch.ones_like(v_label, dtype=torch.float))
+            v_equal = torch.eq(v_pred_label, yv).float()
+            zeros = zeros.scatter_add(0, yv, v_equal)
+            zeros_classes = zeros_classes.scatter_add(0, yv, torch.ones_like(yv, dtype=torch.float))
             v_correct += torch.sum(v_equal).item()
-            v_sum += len(v_label)
+            v_sum += len(yv)
         v_acc = v_correct / v_sum
-
-        print 'validation: {}, {}'.format(v_correct, v_acc, zeros)
-        print 'class: {}'.format(zeros.tolist())
-        print 'class: {}'.format(zeros_classes.tolist())
-        print 'source: {}, target: {}, batch_size: {}, init_lr: {}'.format(s_name, t_name, batch_size, init_lr)
-        print 'lr_mult: {}, lr_mult_Alex: {}'.format(lr_mult, lr_mult_Alex)
-        print '    =======    START TRAINING    =======    '
+        output('validation: {}, {}'.format(v_correct, v_acc, zeros))
+        output('class: {}'.format(zeros.tolist()))
+        output('class: {}'.format(zeros_classes.tolist()))
+        output('source: {}, target: {}, batch_size: {}, init_lr: {}'.format(s_name, t_name, batch_size, init_lr))
+        output('lr_mult: {}, lr_mult_D: {}'.format(lr_mult, lr_mult_D))
+        output('    =======    START TRAINING    =======    ')
 
     # save model
-    if epoch % 300 == 0:
+    if epoch % 1000 == 0 and epoch != 0:
         torch.save({
             'epoch': epoch + 1,
             'model': model.state_dict(),
-            'optimizer': opt.state_dict()
-        }, checkpoint_path)
+            'opt': opt.state_dict(),
+            'opt_D': opt_D.state_dict()
+        }, checkpoint_save_path)
 
     epoch += 1

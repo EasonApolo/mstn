@@ -35,14 +35,14 @@ def load_pretrain_npy():
             weight = np.transpose(weight, (3, 2, 0, 1))
 
         # add keys and data
-        t = torch.from_numpy(weight)
+        t = torch.tensor(weight)
         new_dict[newkey + '.weight'] = t
         new_dict[newkey + '.bias'] = torch.Tensor(bias)
 
     return new_dict
 
 
-def truncated_normal_(tensor, mean=0, std=1):
+def truncated_normal_(tensor, mean=0, std=0.01):
     size = tensor.shape
     tmp = tensor.new_empty(size + (4,)).normal_()
     valid = (tmp < 2) & (tmp > -2)

@@ -1,8 +1,7 @@
-import torch
-import torch.nn as nn
 import itertools
 from itertools import chain
-from torchvision.models import alexnet
+import torch
+import torch.nn as nn
 import utils
 
 class AlexNet(nn.Module):
@@ -12,8 +11,8 @@ class AlexNet(nn.Module):
         self.cudable = cudable
         self.n_class = 31
         self.decay = 0.3
-        self.s_centroid = torch.zeros(256, self.n_class)
-        self.t_centroid = torch.zeros(256, self.n_class)
+        self.s_centroid = torch.zeros(self.n_class, 256)
+        self.t_centroid = torch.zeros(self.n_class, 256)
         if self.cudable:
             self.s_centroid = self.s_centroid.cuda()
             self.t_centroid = self.t_centroid.cuda()
@@ -21,19 +20,15 @@ class AlexNet(nn.Module):
             nn.Conv2d(3, 96, 11, stride=4),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2),
-            nn.LocalResponseNorm(3, 1e-5, 0.75),
-
+            nn.LocalResponseNorm(3, alpha=1e-5),
             nn.Conv2d(96, 256, 5, stride=1, padding=2, groups=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2),
-            nn.LocalResponseNorm(3, 1e-5, 0.75),
-
+            nn.LocalResponseNorm(3, alpha=1e-5),
             nn.Conv2d(256, 384, 3, stride=1, padding=1),
             nn.ReLU(inplace=True),
-
             nn.Conv2d(384, 384, 3, stride=1, padding=1, groups=2),
             nn.ReLU(inplace=True),
-
             nn.Conv2d(384, 256, 3, stride=1, padding=1, groups=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2)
@@ -42,7 +37,6 @@ class AlexNet(nn.Module):
             nn.Linear(6*6*256, 4096),
             nn.ReLU(inplace=True),
             nn.Dropout(),
-
             nn.Linear(4096, 4096),
             nn.ReLU(inplace=True),
             nn.Dropout(),
@@ -58,14 +52,17 @@ class AlexNet(nn.Module):
             nn.Linear(256, 1024),
             nn.ReLU(inplace=True),
             nn.Dropout(),
-
             nn.Linear(1024, 1024),
             nn.ReLU(inplace=True),
             nn.Dropout(),
-
-            nn.Linear(1024, 1),
-            nn.Sigmoid()
+            nn.Linear(1024, 1)
         )
+        self.CEloss, self.MSEloss, self.BCEloss = nn.CrossEntropyLoss(), nn.MSELoss(), nn.BCEWithLogitsLoss(reduction='mean')
+        if self.cudable:
+           self.CEloss, self.MSEloss, self.BCEloss = self.CEloss.cuda(), self.MSEloss.cuda(), self.BCEloss.cuda()
+        self.init()
+
+    def init(self):
         self.init_linear(self.fc8[0])
         self.init_linear(self.fc9[0], std=0.005)
         self.init_linear(self.D[0],D=True)
@@ -73,19 +70,18 @@ class AlexNet(nn.Module):
         self.init_linear(self.D[6],D=True, std=0.3)
 
     def init_linear(self, m, std=0.01, D=False):
-        if type(m) == nn.Linear:
-            utils.truncated_normal_(m.weight.data, 0, std)
-            # m.weight.data.normal_(0, std)
-            # nn.init.normal_(m.weight, std=std)
-            if D:
-                m.bias.data.fill_(0)
-            else:
-                m.bias.data.fill_(0.1)
+        # nn.init.normal_(m.weight.data, 0, std)
+        # utils.truncated_normal_(m.weight.data, 0, std)
+        nn.init.xavier_normal_(m.weight)
+        if D:
+            m.bias.data.fill_(0)
+        else:
+            m.bias.data.fill_(0.1)
 
     def forward(self, x, training=True):
         conv_out = self.conv(x)
-        conv_out = conv_out.view(conv_out.size(0), -1)
-        dense_out = self.dense(conv_out)
+        flattened = conv_out.view(conv_out.size(0), -1)
+        dense_out = self.dense(flattened)
         feature = self.fc8(dense_out)
         score = self.fc9(feature)
         pred = self.softmax(score)
@@ -96,18 +92,16 @@ class AlexNet(nn.Module):
         return logit
 
     def closs(self, y_pred, y):
-        CEloss = nn.CrossEntropyLoss()
-        C_loss = CEloss(y_pred, y)
+        C_loss = self.CEloss(y_pred, y)
         return C_loss
 
     def adloss(self, s_logits, t_logits, s_feature, t_feature, y_s, y_t):
         n, d = s_feature.shape
 
         # get labels
-        s_labels = torch.max(y_s, 1)[1]
-        t_labels = torch.max(y_t, 1)[1]
+        s_labels, t_labels = y_s, torch.max(y_t, 1)[1]
 
-        # n for each class
+        # image number in each class
         ones = torch.ones_like(s_labels, dtype=torch.float)
         zeros = torch.zeros(self.n_class)
         if self.cudable:
@@ -115,59 +109,55 @@ class AlexNet(nn.Module):
         s_n_classes = zeros.scatter_add(0, s_labels, ones)
         t_n_classes = zeros.scatter_add(0, t_labels, ones)
 
-        # class number cannot be 0, for calculating centroids
+        # image number cannot be 0, when calculating centroids
         ones = torch.ones_like(s_n_classes)
         s_n_classes = torch.max(s_n_classes, ones)
         t_n_classes = torch.max(t_n_classes, ones)
 
-        # class centroids
-        zeros = torch.zeros(d, self.n_class)
+        # calculating centroids, sum and divide
+        zeros = torch.zeros(self.n_class, d)
         if self.cudable:
             zeros = zeros.cuda()
-        s_sum_feature = zeros.scatter_add(1, s_labels.repeat(d, 1), torch.transpose(s_feature, 0, 1))
-        t_sum_feature = zeros.scatter_add(1, t_labels.repeat(d, 1), torch.transpose(t_feature, 0, 1))
-        current_s_centroid = torch.div(s_sum_feature, s_n_classes)
-        current_t_centroid = torch.div(t_sum_feature, t_n_classes)
+        s_sum_feature = zeros.scatter_add(0, torch.transpose(s_labels.repeat(d, 1), 1, 0), s_feature)
+        t_sum_feature = zeros.scatter_add(0, torch.transpose(t_labels.repeat(d, 1), 1, 0), t_feature)
+        current_s_centroid = torch.div(s_sum_feature, s_n_classes.view(self.n_class, 1))
+        current_t_centroid = torch.div(t_sum_feature, t_n_classes.view(self.n_class, 1))
 
         # Moving Centroid
         decay = self.decay
         s_centroid = (1-decay) * self.s_centroid + decay * current_s_centroid
         t_centroid = (1-decay) * self.t_centroid + decay * current_t_centroid
-
-        # semantic Loss
-        MSEloss = nn.MSELoss()
-        semantic_loss = MSEloss(s_centroid, t_centroid)
-
-        self.s_centroid = s_centroid.data
-        self.t_centroid = t_centroid.data
+        semantic_loss = self.MSEloss(s_centroid, t_centroid)
+        self.s_centroid = s_centroid.detach()
+        self.t_centroid = t_centroid.detach()
 
         # sigmoid binary cross entropy with reduce mean
-        BCEloss = nn.BCEWithLogitsLoss(reduction='mean')
-        D_real_loss = BCEloss(t_logits, torch.ones_like(t_logits))
-        D_fake_loss = BCEloss(s_logits, torch.zeros_like(s_logits))
-
-        D_loss = D_real_loss + D_fake_loss
-        G_loss = -D_loss * 0.1
-        D_loss = D_loss * 0.1
+        D_real_loss = self.BCEloss(t_logits, torch.ones_like(t_logits))
+        D_fake_loss = self.BCEloss(s_logits, torch.zeros_like(s_logits))
+        D_loss = (D_real_loss + D_fake_loss) * 0.1
+        G_loss = -D_loss
 
         return G_loss, D_loss, semantic_loss
 
+    # To some extent, can be replaced by weight_decay param in optimizer.
     def regloss(self):
-        MSEloss = nn.MSELoss()
-        Dregloss = [MSEloss(layer.weight, torch.zeros_like(layer.weight)) for layer in self.D if type(layer) == nn.Linear]
+        Dregloss = [torch.sum(layer.weight ** 2) / 2 for layer in self.D if type(layer) == nn.Linear]
         layers = chain(self.conv, self.dense, self.fc8, self.fc9)
-        Gregloss = [MSEloss(layer.weight, torch.zeros_like(layer.weight)) for layer in layers if type(layer) == nn.Conv2d or type(layer) == nn.Linear]
+        Gregloss = [torch.sum(layer.weight ** 2) / 2 for layer in layers if type(layer) == nn.Conv2d or type(layer) == nn.Linear]
         mean = lambda x:0.0005 * torch.mean(torch.stack(x))
         return mean(Dregloss), mean(Gregloss)
-    
+
+
     def get_optimizer(self, init_lr, lr_mult, lr_mult_D):
         w_finetune, b_finetune, w_train, b_train, w_D, b_D = [], [], [], [], [], []
 
-        for layer in itertools.chain(self.conv, self.dense):
+        finetune_layers = itertools.chain(self.conv, self.dense)
+        train_layers = itertools.chain(self.fc8, self.fc9)
+        for layer in finetune_layers:
             if type(layer) == nn.Conv2d or type(layer) == nn.Linear:
                 w_finetune.append(layer.weight)
                 b_finetune.append(layer.bias)
-        for layer in itertools.chain(self.fc8, self.fc9):
+        for layer in train_layers:
             if type(layer) == nn.Linear:
                 w_train.append(layer.weight)
                 b_train.append(layer.bias)
@@ -176,54 +166,14 @@ class AlexNet(nn.Module):
                 w_D.append(layer.weight)
                 b_D.append(layer.bias)
 
-        opt = torch.optim.SGD([{'params': w_finetune, 'lr': init_lr * lr_mult[0]},
+        opt = torch.optim.Adam([{'params': w_finetune, 'lr': init_lr * lr_mult[0]},
                                {'params': b_finetune, 'lr': init_lr * lr_mult[1]},
                                {'params': w_train, 'lr': init_lr * lr_mult[2]},
-                               {'params': b_train, 'lr': init_lr * lr_mult[3]}
-                               ], lr=init_lr, momentum=0.9, weight_decay=0.0005)
+                               {'params': b_train, 'lr': init_lr * lr_mult[3]}],
+                              lr=init_lr)
 
-        opt_D = torch.optim.SGD([{'params': w_D, 'lr': init_lr * lr_mult_D[0]},
-                                 {'params': b_D, 'lr': init_lr * lr_mult_D[1]}], lr=init_lr, momentum=0.9)
+        opt_D = torch.optim.Adam([{'params': w_D, 'lr': init_lr * lr_mult_D[0]},
+                                 {'params': b_D, 'lr': init_lr * lr_mult_D[1]}],
+                                lr=init_lr)
 
         return opt, opt_D
-
-
-class PreAlexNet(nn.Module):
-
-    def __init__(self, cudable):
-        super(PreAlexNet, self).__init__()
-
-        self.alexnet = alexnet(pretrained=True)
-        self.bottleneck_layer = nn.Sequential(
-            nn.Linear(1000, 256),
-            nn.ReLU(),
-            nn.Dropout(0.5)
-        )
-        self.classifier_layer = nn.Linear(256, 31)
-        self.softmax_layer = nn.Softmax(dim=0)
-
-        self.init()
-
-    def init(self):
-        for param in self.alexnet.parameters():
-            param.requires_grad = False
-        self.bottleneck_layer[0].weight.data.normal_(0, 0.005)
-        self.bottleneck_layer[0].bias.data.fill_(0.1)
-        self.classifier_layer.weight.data.normal_(0, 0.01)
-        self.classifier_layer.bias.data.fill_(0.0)
-
-    def get_optimizer(self, init_lr, lr_mult):
-        parameter_list = [
-            {"params": self.alexnet.parameters()},
-            {"params": self.bottleneck_layer.parameters()},
-            {"params": self.classifier_layer.parameters()}
-        ]
-        return torch.optim.SGD(parameter_list, lr=init_lr, momentum=0.9, weight_decay=0.0005)
-
-    def forward(self, x):
-        alex_out = self.alexnet.forward(x)
-        feature = self.bottleneck_layer(alex_out)
-        score = self.classifier_layer(feature)
-        pred = self.softmax_layer(score)
-        return feature, score, pred
-
