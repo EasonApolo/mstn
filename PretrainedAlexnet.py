@@ -3,6 +3,7 @@ from itertools import chain
 import torch
 import torch.nn as nn
 import utils
+from torchvision.models import alexnet
 
 class AlexNet(nn.Module):
 
@@ -16,31 +17,9 @@ class AlexNet(nn.Module):
         if self.cudable:
             self.s_centroid = self.s_centroid.cuda()
             self.t_centroid = self.t_centroid.cuda()
-        self.conv = nn.Sequential(
-            nn.Conv2d(3, 96, 11, stride=4),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(3, stride=2),
-            nn.LocalResponseNorm(3, alpha=1e-5),
-            nn.Conv2d(96, 256, 5, stride=1, padding=2, groups=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(3, stride=2),
-            nn.LocalResponseNorm(3, alpha=1e-5),
-            nn.Conv2d(256, 384, 3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(384, 384, 3, stride=1, padding=1, groups=2),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(384, 256, 3, stride=1, padding=1, groups=2),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(3, stride=2)
-        )
-        self.dense = nn.Sequential(
-            nn.Linear(6*6*256, 4096),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Linear(4096, 4096),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-        )
+        pretrained = alexnet(pretrained=True)
+        self.features = pretrained.features
+        self.classifier = nn.Sequential(*[pretrained.classifier[i] for i in range(6)])
         self.fc8 = nn.Sequential(
             nn.Linear(4096, 256)
         )
@@ -79,9 +58,9 @@ class AlexNet(nn.Module):
             m.bias.data.fill_(0.1)
 
     def forward(self, x, training=True):
-        conv_out = self.conv(x)
+        conv_out = self.features(x)
         flattened = conv_out.view(conv_out.size(0), -1)
-        dense_out = self.dense(flattened)
+        dense_out = self.classifier(flattened)
         feature = self.fc8(dense_out)
         score = self.fc9(feature)
         pred = self.softmax(score)
@@ -139,10 +118,10 @@ class AlexNet(nn.Module):
 
         return G_loss, D_loss, semantic_loss
 
-    # To some extent, can be replaced by weight_decay param in optimizer.
+    # To some extent, can be replaced by weight_decay param of the optimizer.
     def regloss(self):
         Dregloss = [torch.sum(layer.weight ** 2) / 2 for layer in self.D if type(layer) == nn.Linear]
-        layers = chain(self.conv, self.dense, self.fc8, self.fc9)
+        layers = chain(self.features, self.classifier, self.fc8, self.fc9)
         Gregloss = [torch.sum(layer.weight ** 2) / 2 for layer in layers if type(layer) == nn.Conv2d or type(layer) == nn.Linear]
         mean = lambda x:0.0005 * torch.mean(torch.stack(x))
         return mean(Dregloss), mean(Gregloss)
@@ -151,7 +130,7 @@ class AlexNet(nn.Module):
     def get_optimizer(self, init_lr, lr_mult, lr_mult_D):
         w_finetune, b_finetune, w_train, b_train, w_D, b_D = [], [], [], [], [], []
 
-        finetune_layers = itertools.chain(self.conv, self.dense)
+        finetune_layers = itertools.chain(self.features, self.classifier)
         train_layers = itertools.chain(self.fc8, self.fc9)
         for layer in finetune_layers:
             if type(layer) == nn.Conv2d or type(layer) == nn.Linear:
@@ -166,14 +145,14 @@ class AlexNet(nn.Module):
                 w_D.append(layer.weight)
                 b_D.append(layer.bias)
 
-        opt = torch.optim.SGD([{'params': w_finetune, 'lr': init_lr * lr_mult[0]},
+        opt = torch.optim.Adam([{'params': w_finetune, 'lr': init_lr * lr_mult[0]},
                                {'params': b_finetune, 'lr': init_lr * lr_mult[1]},
                                {'params': w_train, 'lr': init_lr * lr_mult[2]},
                                {'params': b_train, 'lr': init_lr * lr_mult[3]}],
-                              lr=init_lr, momentum=0.9)
+                              lr=init_lr)
 
-        opt_D = torch.optim.SGD([{'params': w_D, 'lr': init_lr * lr_mult_D[0]},
+        opt_D = torch.optim.Adam([{'params': w_D, 'lr': init_lr * lr_mult_D[0]},
                                  {'params': b_D, 'lr': init_lr * lr_mult_D[1]}],
-                                lr=init_lr, momentum=0.9)
+                                lr=init_lr)
 
         return opt, opt_D

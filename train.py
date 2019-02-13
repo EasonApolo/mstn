@@ -6,9 +6,8 @@ import torch
 import torch.nn as nn
 from torchvision import datasets
 from torchvision import transforms
-from visdom import Visdom
 import MyDataset
-import MyModel
+from PretrainedAlexnet import AlexNet
 import utils
 
 
@@ -26,8 +25,8 @@ def adaptation_factor(x):
 	return lamb
 
 def output(mes):
-    print mes
-    log.write(mes)
+    print(mes)
+    # log.write(mes)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--s', default=0, type=int)
@@ -42,9 +41,9 @@ da = args.da
 os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
 cuda = torch.cuda.is_available()
 
-init_lr = 1e-2
+init_lr = 1e-3
 batch_size = 100
-max_epoch = 30000
+max_epoch = 10000
 lr_mult = [0.1, 0.2, 1, 2]
 lr_mult_D = [1, 2]
 dataset_names = ['amazon', 'webcam', 'dslr']
@@ -59,41 +58,42 @@ log_name = '_'.join(str(a) for a in [s_name, t_name, str(batch_size), str(da), s
 log = open('log/' + log_name + '.log', 'w')
 pretrain_path = 'checkpoint/' + resume + '.pth'
 checkpoint_save_path = 'checkpoint/' + log_name + '.pth'
-print 'GPU: {}'.format(args.gpu)
-print 'source: {}, target: {}, batch_size: {}, init_lr: {}'.format(s_name, t_name, batch_size, init_lr)
-print 'lr_mult: {}, lr_mult_D: {}, resume: {}, da: {}'.format(lr_mult, lr_mult_D, resume, da)
-
-vis = Visdom(env='mymstn'+str(init_lr)+args.name)
+print('GPU: {}'.format(args.gpu))
+print('source: {}, target: {}, batch_size: {}, init_lr: {}'.format(s_name, t_name, batch_size, init_lr))
+print('lr_mult: {}, lr_mult_D: {}, resume: {}, da: {}'.format(lr_mult, lr_mult_D, resume, da))
 
 data_transforms = {
     'train': transforms.Compose([
         transforms.RandomResizedCrop(227),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize([122.678, 116.668, 104.006], [1, 1, 1])
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val': transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(227),
         transforms.ToTensor(),
-        transforms.Normalize([122.678, 116.668, 104.006], [1, 1, 1])
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
 }
-# s_loader = torch.utils.data.DataLoader(MyDataset.Office(s_list_path),
-#                                        batch_size=batch_size, shuffle=True, drop_last=True)
-# t_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path),
-#                                        batch_size=batch_size, shuffle=True, drop_last=True)
-# val_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path, training=False),
-#                                          batch_size=1)
 s_loader = torch.utils.data.DataLoader(datasets.ImageFolder(s_folder_path, transform=data_transforms['train']),
                                        batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
 t_loader = torch.utils.data.DataLoader(datasets.ImageFolder(t_folder_path, transform=data_transforms['train']),
                                        batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
 val_loader = torch.utils.data.DataLoader(datasets.ImageFolder(t_folder_path, transform=data_transforms['val']),
                                          batch_size=batch_size, num_workers=8)
+
+# this commented code block use the 'finetune Alexnet with Tensorflow' preprocessing.
+# s_loader = torch.utils.data.DataLoader(MyDataset.Office(s_list_path),
+#                                        batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
+# t_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path),
+#                                        batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
+# val_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path, training=False),
+#                                          batch_size=1, num_workers=8)
+
 s_loader_len, t_loader_len = len(s_loader), len(t_loader)
 
-model = MyModel.AlexNet(cudable=cuda)
+model = AlexNet(cudable=cuda)
 if cuda:
     model.cuda()
 
@@ -107,7 +107,7 @@ if not resume == '':
     opt_D.load_state_dict(pretrain['opt_D'])
     epoch = pretrain['epoch'] # need change to 0 when DA
 else:
-    model.load_state_dict(utils.load_pretrain_npy(), strict=False)
+    # model.load_state_dict(utils.load_pretrain_npy(), strict=False)
     epoch = 0
 
 
@@ -116,9 +116,9 @@ for epoch in range(epoch, 100000):
     model.train()
     lamb = adaptation_factor(epoch * 1.0 / max_epoch)
     current_lr, _ = lr_schedule(opt, epoch, lr_mult), lr_schedule(opt_D, epoch, lr_mult_D)
-    # if epoch % s_loader_len == 0:
-    if epoch % t_loader_len == 0:
+    if epoch % s_loader_len == 0:
         s_loader_epoch = iter(s_loader)
+    if epoch % t_loader_len == 0:
         t_loader_epoch = iter(t_loader)
     xs, ys = s_loader_epoch.next()
     xt, yt = t_loader_epoch.next()
@@ -135,7 +135,7 @@ for epoch in range(epoch, 100000):
         G_loss, D_loss, semantic_loss = model.adloss(s_logit, t_logit, s_feature, t_feature, ys, t_pred)
         Dregloss, Gregloss = model.regloss()
         F_loss = C_loss + Gregloss + lamb * G_loss + lamb * semantic_loss
-        D_loss = lamb * D_loss + Dregloss
+        D_loss = D_loss + Dregloss
 
         opt_D.zero_grad()
         D_loss.backward(retain_graph=True)
@@ -149,13 +149,6 @@ for epoch in range(epoch, 100000):
 
 
     if epoch % 10 == 0:
-        vis.line(X=np.array([epoch]), Y=np.array([C_loss.item()]), win='C_loss', update='append' if epoch > 0 else None)
-        vis.line(X=np.array([epoch]), Y=np.array([G_loss.item()]), win='G_loss', update='append' if epoch > 0 else None)
-        vis.line(X=np.array([epoch]), Y=np.array([semantic_loss.item()]), win='semantic_loss', update='append' if epoch > 0 else None)
-        vis.line(X=np.array([epoch]), Y=np.array([Gregloss.item()]), win='Gregloss', update='append' if epoch > 0 else None)
-        vis.line(X=np.array([epoch]), Y=np.array([Dregloss.item()]), win='Dregloss', update='append' if epoch > 0 else None)
-        vis.line(X=np.array([epoch]), Y=np.array([F_loss.item()]), win='F_loss', update='append' if epoch > 0 else None)
-
         s_pred_label = torch.max(s_score, 1)[1]
         s_correct = torch.sum(torch.eq(s_pred_label, ys).float())
         s_acc = torch.div(s_correct, ys.size(0))

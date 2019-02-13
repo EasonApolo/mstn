@@ -59,9 +59,4 @@ class Office(data.Dataset):
         img = tensor(img)
         # img = np.transpose(img, (2, 0, 1))
 
-        # # one hot label
-        # one_hot_label = np.zeros(self.n_class, dtype=np.float32)
-        # one_hot_label[label] = 1
-        one_hot_label = label
-
-        return img, one_hot_label
+        return img, label
