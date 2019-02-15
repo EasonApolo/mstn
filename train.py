@@ -122,6 +122,7 @@ for epoch in range(epoch, 100000):
         F_loss.backward(retain_graph=True)
         opt.step()
     else:
+        opt.zero_grad()
         C_loss.backward()
         opt.step()
 
