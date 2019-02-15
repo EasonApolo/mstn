@@ -4,10 +4,9 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
-from torchvision import datasets
-from torchvision import transforms
-import MyDataset
-from PretrainedAlexnet import AlexNet
+
+import dataset
+from model import AlexNet
 import utils
 
 
@@ -28,20 +27,20 @@ def output(mes):
     print(mes)
     # log.write(mes)
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--s', default=0, type=int)
 parser.add_argument('--t', default=1, type=int)
 parser.add_argument('--gpu', default=1, type=int)
-parser.add_argument('--resume', default='', type=str)                # resume from pretrained bvlc_alexnet model
-parser.add_argument('--da', default=1, type=int)                    # 1 for doing domain adaptation
-parser.add_argument('--name', default='', type=str)                    # 1 for doing domain adaptation
+parser.add_argument('--resume', default='', type=str)           # resume from pretrained bvlc_alexnet model
+parser.add_argument('--da', default=1, type=int)                # 1 for doing domain adaptation
 args = parser.parse_args()
 resume = args.resume
 da = args.da
 os.environ['CUDA_VISIBLE_DEVICES'] = str(args.gpu)
 cuda = torch.cuda.is_available()
 
-init_lr = 1e-3
+init_lr = 1e-2
 batch_size = 100
 max_epoch = 10000
 lr_mult = [0.1, 0.2, 1, 2]
@@ -62,38 +61,16 @@ print('GPU: {}'.format(args.gpu))
 print('source: {}, target: {}, batch_size: {}, init_lr: {}'.format(s_name, t_name, batch_size, init_lr))
 print('lr_mult: {}, lr_mult_D: {}, resume: {}, da: {}'.format(lr_mult, lr_mult_D, resume, da))
 
-data_transforms = {
-    'train': transforms.Compose([
-        transforms.RandomResizedCrop(227),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ]),
-    'val': transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(227),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ]),
-}
-s_loader = torch.utils.data.DataLoader(datasets.ImageFolder(s_folder_path, transform=data_transforms['train']),
+s_loader = torch.utils.data.DataLoader(dataset.Office(s_list_path),
                                        batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
-t_loader = torch.utils.data.DataLoader(datasets.ImageFolder(t_folder_path, transform=data_transforms['train']),
+t_loader = torch.utils.data.DataLoader(dataset.Office(t_list_path),
                                        batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
-val_loader = torch.utils.data.DataLoader(datasets.ImageFolder(t_folder_path, transform=data_transforms['val']),
-                                         batch_size=batch_size, num_workers=8)
-
-# this commented code block use the 'finetune Alexnet with Tensorflow' preprocessing.
-# s_loader = torch.utils.data.DataLoader(MyDataset.Office(s_list_path),
-#                                        batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
-# t_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path),
-#                                        batch_size=batch_size, shuffle=True, drop_last=True, num_workers=8)
-# val_loader = torch.utils.data.DataLoader(MyDataset.Office(t_list_path, training=False),
-#                                          batch_size=1, num_workers=8)
+val_loader = torch.utils.data.DataLoader(dataset.Office(t_list_path, training=False),
+                                         batch_size=1, num_workers=8)
 
 s_loader_len, t_loader_len = len(s_loader), len(t_loader)
 
-model = AlexNet(cudable=cuda)
+model = AlexNet(cudable=cuda, n_class=n_class)
 if cuda:
     model.cuda()
 
@@ -107,15 +84,16 @@ if not resume == '':
     opt_D.load_state_dict(pretrain['opt_D'])
     epoch = pretrain['epoch'] # need change to 0 when DA
 else:
+    model.load_state_dict(utils.load_pth_model(), strict=False)
     # model.load_state_dict(utils.load_pretrain_npy(), strict=False)
     epoch = 0
-
 
 output('    =======    START TRAINING    =======    ')
 for epoch in range(epoch, 100000):
     model.train()
     lamb = adaptation_factor(epoch * 1.0 / max_epoch)
     current_lr, _ = lr_schedule(opt, epoch, lr_mult), lr_schedule(opt_D, epoch, lr_mult_D)
+
     if epoch % s_loader_len == 0:
         s_loader_epoch = iter(s_loader)
     if epoch % t_loader_len == 0:
@@ -146,7 +124,6 @@ for epoch in range(epoch, 100000):
     else:
         C_loss.backward()
         opt.step()
-
 
     if epoch % 10 == 0:
         s_pred_label = torch.max(s_score, 1)[1]

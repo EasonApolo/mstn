@@ -41,6 +41,11 @@ def load_pretrain_npy():
 
     return new_dict
 
+def load_pth_model():
+    model_path = '../model/alexnet.pth.tar'
+    pretrained_model = torch.load(model_path)
+    return pretrained_model['state_dict']
+
 
 def truncated_normal_(tensor, mean=0, std=0.01):
     size = tensor.shape
@@ -49,3 +54,30 @@ def truncated_normal_(tensor, mean=0, std=0.01):
     ind = valid.max(-1, keepdim=True)[1]
     tensor.data.copy_(tmp.gather(-1, ind).squeeze(-1))
     tensor.data.mul_(std).add_(mean)
+
+class LRN(nn.Module):
+    def __init__(self, local_size=1, alpha=1.0, beta=0.75, ACROSS_CHANNELS=True):
+        super(LRN, self).__init__()
+        self.ACROSS_CHANNELS = ACROSS_CHANNELS
+        if ACROSS_CHANNELS:
+            self.average = nn.AvgPool3d(kernel_size=(local_size, 1, 1),
+                                        stride=1,
+                                        padding=(int((local_size - 1.0) / 2), 0, 0))
+        else:
+            self.average = nn.AvgPool2d(kernel_size=local_size,
+                                        stride=1,
+                                        padding=int((local_size - 1.0) / 2))
+        self.alpha = alpha
+        self.beta = beta
+
+    def forward(self, x):
+        if self.ACROSS_CHANNELS:
+            div = x.pow(2).unsqueeze(1)
+            div = self.average(div).squeeze(1)
+            div = div.mul(self.alpha).add(1.0).pow(self.beta)
+        else:
+            div = x.pow(2)
+            div = self.average(div)
+            div = div.mul(self.alpha).add(1.0).pow(self.beta)
+        x = x.div(div)
+        return x

@@ -3,28 +3,31 @@ from itertools import chain
 import torch
 import torch.nn as nn
 import utils
+from utils import LRN
 
 class AlexNet(nn.Module):
 
-    def __init__(self, cudable):
+    def __init__(self, cudable, n_class):
         super(AlexNet, self).__init__()
         self.cudable = cudable
-        self.n_class = 31
+        self.n_class = n_class
         self.decay = 0.3
         self.s_centroid = torch.zeros(self.n_class, 256)
         self.t_centroid = torch.zeros(self.n_class, 256)
         if self.cudable:
             self.s_centroid = self.s_centroid.cuda()
             self.t_centroid = self.t_centroid.cuda()
-        self.conv = nn.Sequential(
+        self.features = nn.Sequential(
             nn.Conv2d(3, 96, 11, stride=4),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2),
-            nn.LocalResponseNorm(3, alpha=1e-5),
+            # nn.LocalResponseNorm(3, alpha=1e-5),
+            LRN(local_size=5, alpha=1e-4, beta=0.75),
             nn.Conv2d(96, 256, 5, stride=1, padding=2, groups=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2),
-            nn.LocalResponseNorm(3, alpha=1e-5),
+            LRN(local_size=5, alpha=1e-4, beta=0.75),
+            # nn.LocalResponseNorm(3, alpha=1e-5),
             nn.Conv2d(256, 384, 3, stride=1, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(384, 384, 3, stride=1, padding=1, groups=2),
@@ -33,7 +36,7 @@ class AlexNet(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool2d(3, stride=2)
         )
-        self.dense = nn.Sequential(
+        self.classifier = nn.Sequential(
             nn.Linear(6*6*256, 4096),
             nn.ReLU(inplace=True),
             nn.Dropout(),
@@ -57,9 +60,6 @@ class AlexNet(nn.Module):
             nn.Dropout(),
             nn.Linear(1024, 1)
         )
-        self.CEloss, self.MSEloss, self.BCEloss = nn.CrossEntropyLoss(), nn.MSELoss(), nn.BCEWithLogitsLoss(reduction='mean')
-        if self.cudable:
-           self.CEloss, self.MSEloss, self.BCEloss = self.CEloss.cuda(), self.MSEloss.cuda(), self.BCEloss.cuda()
         self.init()
 
     def init(self):
@@ -68,20 +68,23 @@ class AlexNet(nn.Module):
         self.init_linear(self.D[0],D=True)
         self.init_linear(self.D[3],D=True)
         self.init_linear(self.D[6],D=True, std=0.3)
+        self.CEloss, self.MSEloss, self.BCEloss = nn.CrossEntropyLoss(), nn.MSELoss(), nn.BCEWithLogitsLoss(reduction='mean')
+        if self.cudable:
+           self.CEloss, self.MSEloss, self.BCEloss = self.CEloss.cuda(), self.MSEloss.cuda(), self.BCEloss.cuda()
 
     def init_linear(self, m, std=0.01, D=False):
         # nn.init.normal_(m.weight.data, 0, std)
-        utils.truncated_normal_(m.weight.data, 0, std)
         # nn.init.xavier_normal_(m.weight)
+        utils.truncated_normal_(m.weight.data, 0, std)
         if D:
             m.bias.data.fill_(0)
         else:
             m.bias.data.fill_(0.1)
 
     def forward(self, x, training=True):
-        conv_out = self.conv(x)
+        conv_out = self.features(x)
         flattened = conv_out.view(conv_out.size(0), -1)
-        dense_out = self.dense(flattened)
+        dense_out = self.classifier(flattened)
         feature = self.fc8(dense_out)
         score = self.fc9(feature)
         pred = self.softmax(score)
@@ -142,7 +145,7 @@ class AlexNet(nn.Module):
     # To some extent, can be replaced by weight_decay param in optimizer.
     def regloss(self):
         Dregloss = [torch.sum(layer.weight ** 2) / 2 for layer in self.D if type(layer) == nn.Linear]
-        layers = chain(self.conv, self.dense, self.fc8, self.fc9)
+        layers = chain(self.features, self.classifier, self.fc8, self.fc9)
         Gregloss = [torch.sum(layer.weight ** 2) / 2 for layer in layers if type(layer) == nn.Conv2d or type(layer) == nn.Linear]
         mean = lambda x:0.0005 * torch.mean(torch.stack(x))
         return mean(Dregloss), mean(Gregloss)
@@ -151,7 +154,7 @@ class AlexNet(nn.Module):
     def get_optimizer(self, init_lr, lr_mult, lr_mult_D):
         w_finetune, b_finetune, w_train, b_train, w_D, b_D = [], [], [], [], [], []
 
-        finetune_layers = itertools.chain(self.conv, self.dense)
+        finetune_layers = itertools.chain(self.features, self.classifier)
         train_layers = itertools.chain(self.fc8, self.fc9)
         for layer in finetune_layers:
             if type(layer) == nn.Conv2d or type(layer) == nn.Linear:
@@ -170,10 +173,10 @@ class AlexNet(nn.Module):
                                {'params': b_finetune, 'lr': init_lr * lr_mult[1]},
                                {'params': w_train, 'lr': init_lr * lr_mult[2]},
                                {'params': b_train, 'lr': init_lr * lr_mult[3]}],
-                              lr=init_lr, momentum=0.9)
+                              lr=init_lr,momentum=0.9)
 
         opt_D = torch.optim.SGD([{'params': w_D, 'lr': init_lr * lr_mult_D[0]},
                                  {'params': b_D, 'lr': init_lr * lr_mult_D[1]}],
-                                lr=init_lr, momentum=0.9)
+                                lr=init_lr,momentum=0.9)
 
         return opt, opt_D

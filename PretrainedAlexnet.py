@@ -7,10 +7,10 @@ from torchvision.models import alexnet
 
 class AlexNet(nn.Module):
 
-    def __init__(self, cudable):
+    def __init__(self, cudable, n_class):
         super(AlexNet, self).__init__()
         self.cudable = cudable
-        self.n_class = 31
+        self.n_class = n_class
         self.decay = 0.3
         self.s_centroid = torch.zeros(self.n_class, 256)
         self.t_centroid = torch.zeros(self.n_class, 256)
@@ -36,9 +36,6 @@ class AlexNet(nn.Module):
             nn.Dropout(),
             nn.Linear(1024, 1)
         )
-        self.CEloss, self.MSEloss, self.BCEloss = nn.CrossEntropyLoss(), nn.MSELoss(), nn.BCEWithLogitsLoss(reduction='mean')
-        if self.cudable:
-           self.CEloss, self.MSEloss, self.BCEloss = self.CEloss.cuda(), self.MSEloss.cuda(), self.BCEloss.cuda()
         self.init()
 
     def init(self):
@@ -47,6 +44,9 @@ class AlexNet(nn.Module):
         self.init_linear(self.D[0],D=True)
         self.init_linear(self.D[3],D=True)
         self.init_linear(self.D[6],D=True, std=0.3)
+        self.CEloss, self.MSEloss, self.BCEloss = nn.CrossEntropyLoss(), nn.MSELoss(), nn.BCEWithLogitsLoss(reduction='mean')
+        if self.cudable:
+           self.CEloss, self.MSEloss, self.BCEloss = self.CEloss.cuda(), self.MSEloss.cuda(), self.BCEloss.cuda()
 
     def init_linear(self, m, std=0.01, D=False):
         # nn.init.normal_(m.weight.data, 0, std)
